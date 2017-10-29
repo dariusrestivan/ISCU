@@ -1,0 +1,9 @@
+[Design Root]
+Version=1.0.0
+[Directory]
+PCB1.PCB=PCB
+Sheet1.Sch=Sch
+[PCB1.PCB]
+Editor Kind=PCB
+[Sheet1.Sch]
+Editor Kind=Sch
