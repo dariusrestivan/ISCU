@@ -305,41 +305,6 @@ void ggLoadExFlashCode()
 		gPureVarNum=head[10];
 		gConstVarNum=head[11];
 		gScriptLineNum=head[12];
-		for(i=0;i<gPureVarNum;i++)
-		{
-			startPos=20+i*30;
-			//load the var[i] init value to gVar[i]
-			data1=ggReadExFlash(startPos+28);
-			data1&=0x0000ffff;
-			data2=ggReadExFlash(startPos+29);
-			data2&=0x0000ffff;
-			data2=(data2<<16)|data1;
-			gVar[i]=*((float*)&data2);
-		}
-		for(i=0;i<gConstVarNum;i++)
-		{
-			startPos=20+gPureVarNum*30+i*30;
-			//load the var[i] init value to gVar[i]
-			data1=ggReadExFlash(startPos+28);
-			data1&=0x0000ffff;
-			data2=ggReadExFlash(startPos+29);
-			data2&=0x0000ffff;
-			data2=(data2<<16)|data1;
-			gVar[gPureVarNum+i]=*((float*)&data2);
-		}
-		for(i=0;i<gScriptLineNum;i++)
-		{
-			startPos=20+gPureVarNum*30+gConstVarNum*30+i*10;
-			//load the script to gScript
-			for(j=0;j<10;j++)
-			{
-				gScript[i][j]=ggReadExFlash(startPos+j);
-				LIMIT(gScript[i][j],0,499);
-			}
-		}
-		//by now,for every pureVar, we have 28 chars to store the name
-		//we can report the name of the vars, but only 26*250 are supported
-		//thus, we just remove the last two chars and report them to the computer
 	}
 	else
 	{
@@ -1507,57 +1472,6 @@ void ggCommuWithPcSoftware(int flag)
 				dataLow=(dataLow<<8)|revBuf[8];
 				dataWhole=(dataHigh<<16)|dataLow;
 
-				switch(revBuf[3])
-				{
-					case 0:
-						chnVar[chn]=dataWhole;//change chn var source
-						break;
-					case 1:
-						chnGain[chn]=(float)dataWhole*0.0001;//chang chn gain
-						break;
-					case 2:
-						sendingMode=0;//sending data mode
-						break;
-					case 3:
-						sendingMode=1;//sending var info
-						reportCnt=0;//begin with reporting
-						break;
-					case 4:
-						sendingMode=2;//silent
-						break;
-					case 5://wirte to the flash
-						ggEnablePwm(0);
-						if(ggWriteScriptToFlash(revBuf[5],revBuf[6],dataLow)==1)
-						{
-							//reset the system, that is equal to power up again
-							ggResetAllVar();
-							ggLoadExFlashCode();
-							sendingMode=2;
-							reportCnt=0;
-							for(i=0;i<10;i++)
-							{
-								revBuf[i]=0;
-								chnVar[i]=0;
-								chnGain[i]=1;
-								chnOffset[i]=0;
-							}
-						}
-						break;
-					case 6:
-						gVar[chnVar[chn]]=(float)dataWhole*0.0001;//change value positive
-						break;
-					case 7:
-						gVar[chnVar[chn]]=-(float)dataWhole*0.0001;//change value negative
-						break;
-					case 8:
-						chnOffset[chn]=(float)dataWhole*0.0001;
-						break;
-					case 9:
-						chnOffset[chn]=-(float)dataWhole*0.0001;
-						break;
-					default:
-						break;
-				}
 				//clear rev buffer
 				revBuf[0]=0;
 				revBuf[1]=0;
@@ -1570,71 +1484,6 @@ void ggCommuWithPcSoftware(int flag)
 				revBuf[8]=0;
 				revBuf[9]=0;
 			}
-		}
-		switch(sendingMode)
-		{
-			case 0://send datas
-				if (SCIACANSEND)
-				{
-					static int chnToSend=0;
-					if(chnToSend==0)
-					{
-						SciaRegs.SCITXBUF=201;
-					}
-					else
-					{
-						float rst=0;
-						int tmp=0;
-						rst=gVar[chnVar[chnToSend]];
-						tmp=(rst+chnOffset[chnToSend])*chnGain[chnToSend];
-						if(tmp>100)
-						{
-							tmp=100;
-						}
-						if(tmp<-100)
-						{
-							tmp=-100;
-						}
-						tmp+=100;
-						SciaRegs.SCITXBUF=(char)tmp;
-					}
-
-					chnToSend+=1;
-					if(chnToSend>=10)
-					{
-						chnToSend=0;
-					}
-				}
-				break;
-			case 1://send var informations
-				if(reportCnt<6500)//250*26=6500 chars
-				{
-					if(SCIACANSEND)
-					{
-						int tmp1;
-						int tmp2;
-						int tmpData;
-
-						tmp1=reportCnt/26;
-						tmp2=reportCnt-tmp1*26;
-
-						if(tmp1>=0 && tmp1<gPureVarNum && tmp2>=0 && tmp2<=25)
-						{
-							tmpData=ggReadExFlash(20+tmp1*30+tmp2);
-						}
-						else
-						{
-							tmpData=0;
-						}
-						SciaRegs.SCITXBUF=tmpData;
-						reportCnt+=1;
-					}
-				}
-				break;
-			case 2://silent
-				break;
-			default:
-				break;
 		}
 	}
 }
@@ -1710,37 +1559,7 @@ void ggLedSpark()
 interrupt void epwm1CallBack()
 {
 	gTsHappen=1;
-	if(gnAdZeroCnt<10000)
-	{
-		if(gnAdZeroCnt>=5000)
-		{
-			ggADSample();
-			gAdSampleOffset[0]+=gAdSampleValue[0]*TS;
-			gAdSampleOffset[1]+=gAdSampleValue[1]*TS;
-			gAdSampleOffset[2]+=gAdSampleValue[2]*TS;
-			gAdSampleOffset[3]+=gAdSampleValue[3]*TS;
-			gAdSampleOffset[4]+=gAdSampleValue[4]*TS;
-			gAdSampleOffset[5]+=gAdSampleValue[5]*TS;
-			gAdSampleOffset[6]+=gAdSampleValue[6]*TS;
-			gAdSampleOffset[7]+=gAdSampleValue[7]*TS;
-			gAdSampleOffset[8]+=gAdSampleValue[8]*TS;
-			gAdSampleOffset[9]+=gAdSampleValue[9]*TS;
-			gAdSampleOffset[10]+=gAdSampleValue[10]*TS;
-			gAdSampleOffset[11]+=gAdSampleValue[11]*TS;
-			gAdSampleOffset[12]+=gAdSampleValue[12]*TS;
-			gAdSampleOffset[13]+=gAdSampleValue[13]*TS;
-			gAdSampleOffset[14]+=gAdSampleValue[14]*TS;
-			gAdSampleOffset[15]+=gAdSampleValue[15]*TS;
-		}
-		gnAdZeroCnt+=1;
-	}
-	else
-	{
-		//ad
-		ggADSample();
-		//led for the infomation
-		ggLedSpark();
-	}
+	
 	//commu
 	ggCommuWithPcSoftware(2);
 
